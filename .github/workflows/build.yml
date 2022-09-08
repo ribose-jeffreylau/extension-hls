@@ -28,7 +28,7 @@ jobs:
         uses: actions/cache@v3
         with:
           path: ${{ env.CACHE_DIR }}
-          key: ${{ github.workflow }}-${{ runner.os }}-${{ matrix.node }}-${{ hashFiles('src/**', 'tsconfig*.json', 'yarn.lock', '.github/workflows/build.yml') }}
+          key: build-${{ runner.os }}-${{ matrix.node }}-${{ hashFiles('src/**', 'tsconfig*.json', 'yarn.lock', '.github/workflows/build.yml') }}
 
       - uses: actions/setup-node@v3
         if: steps.build_cache.outputs.cache-hit != 'true'

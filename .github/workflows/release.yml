@@ -12,12 +12,18 @@ on:
           Next release version. Possible values: x.y.z, major, minor, patch
         required: true
         default: 'skip'
+      skip_tests:
+        description: |
+          Skip tests iff === 'true'
+        required: true
+        default: 'false'
 
 env:
   CACHE_DIR: installs
 
 jobs:
   tests:
+    if: github.events.inputs.skip_tests != 'true'
     uses: ./.github/workflows/tests.yml
 
   publish:

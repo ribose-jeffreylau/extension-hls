@@ -1,6 +1,7 @@
 name: release
 
 on:
+  workflow_call:
   push:
     tags:
       - '*'
@@ -11,32 +12,80 @@ on:
           Next release version. Possible values: x.y.z, major, minor, patch
         required: true
         default: 'skip'
+      skip_tests:
+        description: |
+          Skip tests iff === 'true'
+        required: true
+        default: 'false'
+
+env:
+  CACHE_DIR: installs
 
 jobs:
-  release:
+  tests:
+    if: github.events.inputs.skip_tests != 'true'
+    uses: ./.github/workflows/tests.yml
+
+  publish:
+    needs: [tests]
     runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        node: ['16.x']
+      fail-fast: false
 
     steps:
-      - uses: actions/checkout@v2
-
-      - uses: actions/setup-node@v2
+      - uses: actions/checkout@v3
         with:
-          node-version: '16.x'
+          fetch-depth: 1
+
+      - uses: actions/setup-node@v3
+        with:
+          node-version: ${{ matrix.node }}
           registry-url: 'https://registry.npmjs.org'
 
-      - if: github.event_name == 'workflow_dispatch' && github.event.inputs.next_version != 'skip'
+      - run: yarn install --frozen-lockfile
+
+      # For rsync support in Windows
+      - uses: GuillaumeFalourd/setup-rsync@v1
+        if: matrix.os == 'windows-latest'
+
+      - name: Restore cache
+        id: build_cache
+        uses: actions/cache@v3
+        with:
+          path: ${{ env.CACHE_DIR }}
+          key: build-${{ runner.os }}-${{ matrix.node }}-${{ hashFiles('src/**', 'tsconfig*.json', 'yarn.lock', '.github/workflows/build.yml') }}
+
+      - name: Restore cache to working directory
+        shell: bash
+        run: |
+          echo ls -la ${{ env.CACHE_DIR }}/
+          ls -la ${{ env.CACHE_DIR }}/
+          echo ls -la ${{ env.CACHE_DIR }}/*
+          ls -la ${{ env.CACHE_DIR }}/*
+          echo ls -la .
+          ls -la .
+          for i in dist; do \
+            echo rsync -a ${{ env.CACHE_DIR }}/"$i"/ "$i"; \
+            rsync -a ${{ env.CACHE_DIR }}/"$i"/ "$i"; \
+          done
+          echo ls -la .
+          ls -la .
+          echo ls -la dist/
+          ls -la dist/
+          echo ls -la dist/*
+          ls -la dist/*
+
+      - name: Create a new version
+        if: github.event_name == 'workflow_dispatch' && github.event.inputs.next_version != 'skip'
+        shell: bash
         run: |
           yarn version --new-version ${{ github.event.inputs.next_version }}
           git push
 
-      - run: yarn install
-
-      - run: yarn lint
-
-      - run: yarn test
-
-      - run: yarn build
-
-      - run: yarn publish dist --access public
+      - name: Publish to npm
+        run: |
+          yarn publish dist --access public
         env:
           NODE_AUTH_TOKEN: ${{ secrets.PANERON_CI_NPM_TOKEN }}

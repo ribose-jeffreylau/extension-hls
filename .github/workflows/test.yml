@@ -1,31 +1,11 @@
 name: test
 
 on:
-  push:
-    branches: [ main ]
-    paths-ignore:
-      - '/*.sh'
-      - '/.*'
-      - '/_*'
-      - '/vcpkg.txt'
-      - 'docs/**'
-      - '**.adoc'
-      - '**.md'
-      - '**.nix'
-      - 'flake.lock'
-      - '.github/workflows/*.yml'
-      - '!.github/workflows/test.yml'
-  pull_request:
-    paths-ignore:
-      - '/*.sh'
-      - '/.*'
-      - '/_*'
-      - '/vcpkg.txt'
-      - 'docs/**'
-      - '**.adoc'
-      - '**.md'
-      - '**.nix'
-      - 'flake.lock'
+  workflow_call:
+  workflow_dispatch:
+
+env:
+  CACHE_DIR: installs
 
 jobs:
   test:
@@ -39,7 +19,7 @@ jobs:
         node: ['14.x', '16.x', '18.x']
 
     steps:
-      - uses: actions/checkout@v2
+      - uses: actions/checkout@v3
         with:
           fetch-depth: 1
 
@@ -50,10 +30,32 @@ jobs:
           cache: yarn
           cache-dependency-path: yarn.lock
 
-      - run: yarn install
+      - run: yarn install --frozen-lockfile
 
-      - run: yarn lint
+      # For rsync support in Windows
+      - uses: GuillaumeFalourd/setup-rsync@v1
+        if: matrix.os == 'windows-latest'
+
+      - name: Restore cache
+        id: build_cache
+        uses: actions/cache@v3
+        with:
+          path: ${{ env.CACHE_DIR }}
+          key: build-${{ runner.os }}-${{ matrix.node }}-${{ hashFiles('src/**', 'tsconfig*.json', 'yarn.lock', '.github/workflows/build.yml') }}
+
+      - name: Restore cache to working directory
+        shell: bash
+        run: |
+          echo ls -la ${{ env.CACHE_DIR }}/
+          ls -la ${{ env.CACHE_DIR }}/
+          echo ls -la ${{ env.CACHE_DIR }}/*
+          ls -la ${{ env.CACHE_DIR }}/*
+          for i in dist; do \
+            rsync -a ${{ env.CACHE_DIR }}/"$i" "$i"; \
+          done
+          echo ls -la .
+          ls -la .
+          echo ls -la dist
+          ls -la dist
 
       - run: yarn test
-
-      - run: yarn run test:e2e
